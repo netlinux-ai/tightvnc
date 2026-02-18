@@ -33,7 +33,7 @@ jobs:
         run: |
           cd vnc_unixsrc/Xvnc
           ./configure
-          make EXTRA_LIBRARIES="-lwrap" CDEBUGFLAGS="-O2" \
+          make AR="ar cq" EXTRA_LIBRARIES="-lwrap" CDEBUGFLAGS="-O2" \
                EXTRA_DEFINES="-DUSE_LIBWRAP=1"
 
       - name: Determine version
