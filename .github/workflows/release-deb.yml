@@ -48,13 +48,14 @@ jobs:
         run: |
           sudo apt-get install -y checkinstall
           cd vnc_unixsrc
+          sudo mkdir -p /usr/share/man/man1
           sudo checkinstall --default \
             --pkgname=tightvnc \
             --pkgversion="${{ steps.version.outputs.version }}" \
             --maintainer="graham@netlinux.co.uk" \
             --pakdir=. \
             --install=no \
-            --fstrans=yes \
+            --fstrans=no \
             ./vncinstall /usr/bin /usr/share/man
 
       - name: Repack .deb for reprepro compatibility
