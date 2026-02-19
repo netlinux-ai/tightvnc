@@ -222,7 +222,10 @@ static XtResource appDataResourceList[] = {
    XtOffsetOf(AppData, grabKeyboard), XtRImmediate, (XtPointer) False},
 
   {"autoPass", "AutoPass", XtRBool, sizeof(Bool),
-   XtOffsetOf(AppData, autoPass), XtRImmediate, (XtPointer) False}
+   XtOffsetOf(AppData, autoPass), XtRImmediate, (XtPointer) False},
+
+  {"scalePercent", "ScalePercent", XtRInt, sizeof(int),
+   XtOffsetOf(AppData, scalePercent), XtRImmediate, (XtPointer) 100}
 };
 
 
@@ -249,7 +252,8 @@ XrmOptionDescRec cmdLineOptions[] = {
   {"-nojpeg",        "*enableJPEG",         XrmoptionNoArg,  "False"},
   {"-nocursorshape", "*useRemoteCursor",    XrmoptionNoArg,  "False"},
   {"-x11cursor",     "*useX11Cursor",       XrmoptionNoArg,  "True"},
-  {"-autopass",      "*autoPass",           XrmoptionNoArg,  "True"}
+  {"-autopass",      "*autoPass",           XrmoptionNoArg,  "True"},
+  {"-scale",         "*scalePercent",       XrmoptionSepArg, 0}
 
 };
 
@@ -325,6 +329,7 @@ usage(void)
 	  "        -nocursorshape\n"
 	  "        -x11cursor\n"
 	  "        -autopass\n"
+	  "        -scale <PERCENT> (e.g. 50 for half size, default 100)\n"
 	  "\n"
 	  "Option names may be abbreviated, e.g. -bgr instead of -bgr233.\n"
 	  "See the manual page for more information."

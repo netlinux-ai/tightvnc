@@ -53,8 +53,7 @@ HandleCoRREBPP (int rx, int ry, int rw, int rh)
     gcv.foreground = pix;
 #endif
 
-    XChangeGC(dpy, gc, GCForeground, &gcv);
-    XFillRectangle(dpy, desktopWin, gc, rx, ry, rw, rh);
+    FillRectOnScreen(gcv.foreground, rx, ry, rw, rh);
 
     if (!ReadFromRFBServer(buffer, hdr.nSubrects * (4 + (BPP / 8))))
 	return False;
@@ -75,8 +74,7 @@ HandleCoRREBPP (int rx, int ry, int rw, int rh)
 	gcv.foreground = pix;
 #endif
 
-	XChangeGC(dpy, gc, GCForeground, &gcv);
-	XFillRectangle(dpy, desktopWin, gc, rx + x, ry + y, w, h);
+	FillRectOnScreen(gcv.foreground, rx + x, ry + y, w, h);
     }
 
     return True;

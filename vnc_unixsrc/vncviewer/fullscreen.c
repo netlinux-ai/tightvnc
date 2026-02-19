@@ -84,10 +84,12 @@ FullScreenOn()
   Dimension toplevelWidth, toplevelHeight;
   Dimension oldViewportWidth, oldViewportHeight, clipWidth, clipHeight;
   Position viewportX, viewportY;
+  int scaledFBW = SCALE_X(si.framebufferWidth);
+  int scaledFBH = SCALE_Y(si.framebufferHeight);
 
   appData.fullScreen = True;
 
-  if (si.framebufferWidth > dpyWidth || si.framebufferHeight > dpyHeight) {
+  if (scaledFBW > dpyWidth || scaledFBH > dpyHeight) {
 
     XtVaSetValues(viewport, XtNforceBars, True, NULL);
     XtVaGetValues(viewport, XtNwidth, &oldViewportWidth,
@@ -98,23 +100,23 @@ FullScreenOn()
     scrollbarWidth = oldViewportWidth - clipWidth;
     scrollbarHeight = oldViewportHeight - clipHeight;
 
-    if (si.framebufferWidth > dpyWidth) {
+    if (scaledFBW > dpyWidth) {
       viewportWidth = toplevelWidth = dpyWidth + scrollbarWidth;
     } else {
-      viewportWidth = si.framebufferWidth + scrollbarWidth;
+      viewportWidth = scaledFBW + scrollbarWidth;
       toplevelWidth = dpyWidth;
     }
 
-    if (si.framebufferHeight > dpyHeight) {
+    if (scaledFBH > dpyHeight) {
       viewportHeight = toplevelHeight = dpyHeight + scrollbarHeight;
     } else {
-      viewportHeight = si.framebufferHeight + scrollbarHeight;
+      viewportHeight = scaledFBH + scrollbarHeight;
       toplevelHeight = dpyHeight;
     }
 
   } else {
-    viewportWidth = si.framebufferWidth;
-    viewportHeight = si.framebufferHeight;
+    viewportWidth = scaledFBW;
+    viewportHeight = scaledFBH;
     toplevelWidth = dpyWidth;
     toplevelHeight = dpyHeight;
   }
@@ -205,8 +207,8 @@ FullScreenOn()
 void
 FullScreenOff()
 {
-  int toplevelWidth = si.framebufferWidth;
-  int toplevelHeight = si.framebufferHeight;
+  int toplevelWidth = SCALE_X(si.framebufferWidth);
+  int toplevelHeight = SCALE_Y(si.framebufferHeight);
 
   appData.fullScreen = False;
 
@@ -329,12 +331,14 @@ static Bool
 DoBumpScroll()
 {
   int oldx = desktopX, oldy = desktopY;
+  int scaledFBW = SCALE_X(si.framebufferWidth);
+  int scaledFBH = SCALE_Y(si.framebufferHeight);
 
   if (scrollRight) {
-    if (desktopX < si.framebufferWidth - dpyWidth) {
+    if (desktopX < scaledFBW - dpyWidth) {
       desktopX += appData.bumpScrollPixels;
-      if (desktopX > si.framebufferWidth - dpyWidth)
-	desktopX = si.framebufferWidth - dpyWidth;
+      if (desktopX > scaledFBW - dpyWidth)
+	desktopX = scaledFBW - dpyWidth;
     }
   } else if (scrollLeft) {
     if (desktopX > 0) {
@@ -345,10 +349,10 @@ DoBumpScroll()
   }
 
   if (scrollDown) {
-    if (desktopY < si.framebufferHeight - dpyHeight) {
+    if (desktopY < scaledFBH - dpyHeight) {
       desktopY += appData.bumpScrollPixels;
-      if (desktopY > si.framebufferHeight - dpyHeight)
-	desktopY = si.framebufferHeight - dpyHeight;
+      if (desktopY > scaledFBH - dpyHeight)
+	desktopY = scaledFBH - dpyHeight;
     }
   } else if (scrollUp) {
     if (desktopY > 0) {

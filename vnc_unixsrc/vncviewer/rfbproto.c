@@ -1061,20 +1061,28 @@ HandleRFBServerMessage()
 	SoftCursorLockArea(cr.srcX, cr.srcY, rect.r.w, rect.r.h);
 
 	if (appData.copyRectDelay != 0) {
-	  XFillRectangle(dpy, desktopWin, srcGC, cr.srcX, cr.srcY,
-			 rect.r.w, rect.r.h);
-	  XFillRectangle(dpy, desktopWin, dstGC, rect.r.x, rect.r.y,
-			 rect.r.w, rect.r.h);
+	  XFillRectangle(dpy, desktopWin, srcGC,
+			 SCALE_X(cr.srcX), SCALE_Y(cr.srcY),
+			 SCALE_X(cr.srcX + rect.r.w) - SCALE_X(cr.srcX),
+			 SCALE_Y(cr.srcY + rect.r.h) - SCALE_Y(cr.srcY));
+	  XFillRectangle(dpy, desktopWin, dstGC,
+			 SCALE_X(rect.r.x), SCALE_Y(rect.r.y),
+			 SCALE_X(rect.r.x + rect.r.w) - SCALE_X(rect.r.x),
+			 SCALE_Y(rect.r.y + rect.r.h) - SCALE_Y(rect.r.y));
 	  XSync(dpy,False);
 	  usleep(appData.copyRectDelay * 1000);
-	  XFillRectangle(dpy, desktopWin, dstGC, rect.r.x, rect.r.y,
-			 rect.r.w, rect.r.h);
-	  XFillRectangle(dpy, desktopWin, srcGC, cr.srcX, cr.srcY,
-			 rect.r.w, rect.r.h);
+	  XFillRectangle(dpy, desktopWin, dstGC,
+			 SCALE_X(rect.r.x), SCALE_Y(rect.r.y),
+			 SCALE_X(rect.r.x + rect.r.w) - SCALE_X(rect.r.x),
+			 SCALE_Y(rect.r.y + rect.r.h) - SCALE_Y(rect.r.y));
+	  XFillRectangle(dpy, desktopWin, srcGC,
+			 SCALE_X(cr.srcX), SCALE_Y(cr.srcY),
+			 SCALE_X(cr.srcX + rect.r.w) - SCALE_X(cr.srcX),
+			 SCALE_Y(cr.srcY + rect.r.h) - SCALE_Y(cr.srcY));
 	}
 
-	XCopyArea(dpy, desktopWin, desktopWin, gc, cr.srcX, cr.srcY,
-		  rect.r.w, rect.r.h, rect.r.x, rect.r.y);
+	CopyRectOnScreen(cr.srcX, cr.srcY, rect.r.x, rect.r.y,
+			 rect.r.w, rect.r.h);
 
 	break;
       }

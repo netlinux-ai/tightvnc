@@ -135,8 +135,7 @@ HandleTightBPP (int rx, int ry, int rw, int rh)
     gcv.foreground = fill_colour;
 #endif
 
-    XChangeGC(dpy, gc, GCForeground, &gcv);
-    XFillRectangle(dpy, desktopWin, gc, rx, ry, rw, rh);
+    FillRectOnScreen(gcv.foreground, rx, ry, rw, rh);
     return True;
   }
 

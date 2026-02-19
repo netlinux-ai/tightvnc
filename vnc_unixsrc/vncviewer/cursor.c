@@ -295,7 +295,13 @@ Bool HandleCursorShape(int xhot, int yhot, int width, int height, CARD32 enc)
   /* Set remaining data associated with cursor. */
 
   dr = DefaultRootWindow(dpy);
-  rcSavedArea = XCreatePixmap(dpy, dr, width, height, visdepth);
+  {
+    int sw = (width * appData.scalePercent + 99) / 100;
+    int sh = (height * appData.scalePercent + 99) / 100;
+    if (sw < 1) sw = 1;
+    if (sh < 1) sh = 1;
+    rcSavedArea = XCreatePixmap(dpy, dr, sw + 1, sh + 1, visdepth);
+  }
   rcHotX = xhot;
   rcHotY = yhot;
   rcWidth = width;
@@ -321,9 +327,10 @@ Bool HandleCursorPos(int x, int y)
 {
   if (appData.useX11Cursor) {
     if (appData.fullScreen)
-      XWarpPointer(dpy, None, desktopWin, 0, 0, 0, 0, x, y);
-    
-    return True; 
+      XWarpPointer(dpy, None, desktopWin, 0, 0, 0, 0,
+		   SCALE_X(x), SCALE_Y(y));
+
+    return True;
   }
 
   if (x >= si.framebufferWidth)
@@ -432,6 +439,7 @@ static Bool SoftCursorInLockedArea(void)
 static void SoftCursorCopyArea(int oper)
 {
   int x, y, w, h;
+  int dx, dy, dw, dh;
 
   x = rcCursorX - rcHotX;
   y = rcCursorY - rcHotY;
@@ -453,16 +461,23 @@ static void SoftCursorCopyArea(int oper)
     h = si.framebufferHeight - y;
   }
 
+  /* Scale coordinates for display */
+  dx = SCALE_X(x);
+  dy = SCALE_Y(y);
+  dw = SCALE_X(x + w) - dx;
+  dh = SCALE_Y(y + h) - dy;
+  if (dw <= 0 || dh <= 0) return;
+
   if (oper == OPER_SAVE) {
     /* Save screen area in memory. */
 #ifdef MITSHM
     if (appData.useShm)
       XSync(dpy, False);
 #endif
-    XCopyArea(dpy, desktopWin, rcSavedArea, gc, x, y, w, h, 0, 0);
+    XCopyArea(dpy, desktopWin, rcSavedArea, gc, dx, dy, dw, dh, 0, 0);
   } else {
     /* Restore screen area. */
-    XCopyArea(dpy, rcSavedArea, desktopWin, gc, 0, 0, w, h, x, y);
+    XCopyArea(dpy, rcSavedArea, desktopWin, gc, 0, 0, dw, dh, dx, dy);
   }
 }
 

@@ -61,8 +61,13 @@ ToplevelInitBeforeRealization()
   sprintf(title, titleFormat, desktopName);
   XtVaSetValues(toplevel, XtNtitle, title, XtNiconName, title, NULL);
 
-  XtVaSetValues(toplevel, XtNmaxWidth, si.framebufferWidth,
-		XtNmaxHeight, si.framebufferHeight, NULL);
+  {
+    int scaledFBW = SCALE_X(si.framebufferWidth);
+    int scaledFBH = SCALE_Y(si.framebufferHeight);
+
+    XtVaSetValues(toplevel, XtNmaxWidth, scaledFBW,
+		  XtNmaxHeight, scaledFBH, NULL);
+  }
 
   dpyWidth = WidthOfScreen(DefaultScreenOfDisplay(dpy));
   dpyHeight = HeightOfScreen(DefaultScreenOfDisplay(dpy));
@@ -84,8 +89,8 @@ ToplevelInitBeforeRealization()
 
     if (geometry == NULL) {
       Dimension toplevelX, toplevelY;
-      Dimension toplevelWidth = si.framebufferWidth;
-      Dimension toplevelHeight = si.framebufferHeight;
+      Dimension toplevelWidth = SCALE_X(si.framebufferWidth);
+      Dimension toplevelHeight = SCALE_Y(si.framebufferHeight);
 
       if ((toplevelWidth + appData.wmDecorationWidth) >= dpyWidth)
 	toplevelWidth = dpyWidth - appData.wmDecorationWidth;

@@ -72,8 +72,7 @@ HandleHextileBPP (int rx, int ry, int rw, int rh)
 #endif
 	gcv.foreground = bg;
 
-      XChangeGC(dpy, gc, GCForeground, &gcv);
-      XFillRectangle(dpy, desktopWin, gc, x, y, w, h);
+      FillRectOnScreen(gcv.foreground, x, y, w, h);
 
       if (subencoding & rfbHextileForegroundSpecified)
 	if (!ReadFromRFBServer((char *)&fg, sizeof(fg)))
@@ -107,8 +106,7 @@ HandleHextileBPP (int rx, int ry, int rw, int rh)
 #endif
 	    gcv.foreground = fg;
 
-	  XChangeGC(dpy, gc, GCForeground, &gcv);
-	  XFillRectangle(dpy, desktopWin, gc, x+sx, y+sy, sw, sh);
+	  FillRectOnScreen(gcv.foreground, x+sx, y+sy, sw, sh);
 	}
 
       } else {
@@ -122,8 +120,6 @@ HandleHextileBPP (int rx, int ry, int rw, int rh)
 #endif
 	  gcv.foreground = fg;
 
-	XChangeGC(dpy, gc, GCForeground, &gcv);
-
 	for (i = 0; i < nSubrects; i++) {
 	  sx = rfbHextileExtractX(*ptr);
 	  sy = rfbHextileExtractY(*ptr);
@@ -131,7 +127,7 @@ HandleHextileBPP (int rx, int ry, int rw, int rh)
 	  sw = rfbHextileExtractW(*ptr);
 	  sh = rfbHextileExtractH(*ptr);
 	  ptr++;
-	  XFillRectangle(dpy, desktopWin, gc, x+sx, y+sy, sw, sh);
+	  FillRectOnScreen(gcv.foreground, x+sx, y+sy, sw, sh);
 	}
       }
     }

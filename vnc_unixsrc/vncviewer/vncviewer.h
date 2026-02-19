@@ -109,7 +109,15 @@ typedef struct {
   Bool useX11Cursor;
   Bool autoPass;
 
+  int scalePercent;
+
 } AppData;
+
+/* Scaling coordinate macros */
+#define SCALE_X(x) ((x) * appData.scalePercent / 100)
+#define SCALE_Y(y) ((y) * appData.scalePercent / 100)
+#define SERVER_X(x) ((x) * 100 / appData.scalePercent)
+#define SERVER_Y(y) ((y) * 100 / appData.scalePercent)
 
 extern AppData appData;
 
@@ -160,6 +168,8 @@ extern void DesktopInitAfterRealization();
 extern void SendRFBEvent(Widget w, XEvent *event, String *params,
 			 Cardinal *num_params);
 extern void CopyDataToScreen(char *buf, int x, int y, int width, int height);
+extern void FillRectOnScreen(unsigned long pixel, int x, int y, int w, int h);
+extern void CopyRectOnScreen(int srcX, int srcY, int dstX, int dstY, int w, int h);
 extern void SynchroniseScreen();
 
 /* dialogs.c */

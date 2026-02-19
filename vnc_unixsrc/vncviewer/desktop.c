@@ -38,7 +38,11 @@ Widget form, viewport, desktop;
 static Bool modifierPressed[256];
 
 static XImage *image = NULL;
+static XImage *scaledImage = NULL;
 
+static void ScaleRect(int sx, int sy, int sw, int sh);
+static void ScaleAndPutImage(int x, int y, int w, int h);
+static void FillImageRect(unsigned long pixel, int x, int y, int w, int h);
 static Cursor CreateDotCursor();
 static void CopyBGR233ToScreen(CARD8 *buf, int x, int y, int width,int height);
 static void HandleBasicDesktopEvent(Widget w, XtPointer ptr, XEvent *ev,
@@ -61,6 +65,16 @@ void
 DesktopInitBeforeRealization()
 {
   int i;
+  int scaledWidth, scaledHeight;
+
+  if (appData.scalePercent <= 0) {
+    fprintf(stderr, "Invalid scale value: %d (must be > 0)\n",
+	    appData.scalePercent);
+    exit(1);
+  }
+
+  scaledWidth = SCALE_X(si.framebufferWidth);
+  scaledHeight = SCALE_Y(si.framebufferHeight);
 
   form = XtVaCreateManagedWidget("form", formWidgetClass, toplevel,
 				 XtNborderWidth, 0,
@@ -74,8 +88,8 @@ DesktopInitBeforeRealization()
 				    XtNborderWidth, 0,
 				    NULL);
 
-  XtVaSetValues(desktop, XtNwidth, si.framebufferWidth,
-		XtNheight, si.framebufferHeight, NULL);
+  XtVaSetValues(desktop, XtNwidth, scaledWidth,
+		XtNheight, scaledHeight, NULL);
 
   XtAddEventHandler(desktop, LeaveWindowMask|ExposureMask,
 		    True, HandleBasicDesktopEvent, NULL);
@@ -84,12 +98,16 @@ DesktopInitBeforeRealization()
     modifierPressed[i] = False;
 
   image = NULL;
+  scaledImage = NULL;
 
 #ifdef MITSHM
-  if (appData.useShm) {
+  /* Only use SHM when not scaling - with scaling we need separate images */
+  if (appData.useShm && appData.scalePercent == 100) {
     image = CreateShmImage();
     if (!image)
       appData.useShm = False;
+  } else {
+    appData.useShm = False;
   }
 #endif
 
@@ -100,6 +118,20 @@ DesktopInitBeforeRealization()
 
     image->data = malloc(image->bytes_per_line * image->height);
     if (!image->data) {
+      fprintf(stderr,"malloc failed\n");
+      exit(1);
+    }
+  }
+
+  /* Create scaled image if scaling is active */
+  if (appData.scalePercent != 100) {
+    scaledImage = XCreateImage(dpy, vis, visdepth, ZPixmap, 0, NULL,
+			       scaledWidth, scaledHeight,
+			       BitmapPad(dpy), 0);
+
+    scaledImage->data = malloc(scaledImage->bytes_per_line *
+			       scaledImage->height);
+    if (!scaledImage->data) {
       fprintf(stderr,"malloc failed\n");
       exit(1);
     }
@@ -162,19 +194,35 @@ HandleBasicDesktopEvent(Widget w, XtPointer ptr, XEvent *ev, Boolean *cont)
     /* sometimes due to scrollbars being added/removed we get an expose outside
        the actual desktop area.  Make sure we don't pass it on to the RFB
        server. */
+    {
+      int scaledFBW = SCALE_X(si.framebufferWidth);
+      int scaledFBH = SCALE_Y(si.framebufferHeight);
+      int ex = ev->xexpose.x;
+      int ey = ev->xexpose.y;
+      int ew = ev->xexpose.width;
+      int eh = ev->xexpose.height;
+      int sx, sy, sx2, sy2;
 
-    if (ev->xexpose.x + ev->xexpose.width > si.framebufferWidth) {
-      ev->xexpose.width = si.framebufferWidth - ev->xexpose.x;
-      if (ev->xexpose.width <= 0) break;
+      /* Clamp to scaled framebuffer bounds */
+      if (ex + ew > scaledFBW) {
+	ew = scaledFBW - ex;
+	if (ew <= 0) break;
+      }
+      if (ey + eh > scaledFBH) {
+	eh = scaledFBH - ey;
+	if (eh <= 0) break;
+      }
+
+      /* Convert display coords to server coords */
+      sx = SERVER_X(ex);
+      sy = SERVER_Y(ey);
+      sx2 = SERVER_X(ex + ew) + 1;
+      sy2 = SERVER_Y(ey + eh) + 1;
+      if (sx2 > si.framebufferWidth) sx2 = si.framebufferWidth;
+      if (sy2 > si.framebufferHeight) sy2 = si.framebufferHeight;
+
+      SendFramebufferUpdateRequest(sx, sy, sx2 - sx, sy2 - sy, False);
     }
-
-    if (ev->xexpose.y + ev->xexpose.height > si.framebufferHeight) {
-      ev->xexpose.height = si.framebufferHeight - ev->xexpose.y;
-      if (ev->xexpose.height <= 0) break;
-    }
-
-    SendFramebufferUpdateRequest(ev->xexpose.x, ev->xexpose.y,
-				 ev->xexpose.width, ev->xexpose.height, False);
     break;
 
   case LeaveNotify:
@@ -258,13 +306,13 @@ SendRFBEvent(Widget w, XEvent *ev, String *params, Cardinal *num_params)
 	switch (ev->type) {
 	case ButtonPress:
 	case ButtonRelease:
-	  x = ev->xbutton.x;
-	  y = ev->xbutton.y;
+	  x = SERVER_X(ev->xbutton.x);
+	  y = SERVER_Y(ev->xbutton.y);
 	  break;
 	case KeyPress:
 	case KeyRelease:
-	  x = ev->xkey.x;
-	  y = ev->xkey.y;
+	  x = SERVER_X(ev->xkey.x);
+	  y = SERVER_Y(ev->xkey.y);
 	  break;
 	default:
 	  fprintf(stderr,
@@ -292,18 +340,18 @@ SendRFBEvent(Widget w, XEvent *ev, String *params, Cardinal *num_params)
     while (XCheckTypedWindowEvent(dpy, desktopWin, MotionNotify, ev))
       ;	/* discard all queued motion notify events */
 
-    SendPointerEvent(ev->xmotion.x, ev->xmotion.y,
+    SendPointerEvent(SERVER_X(ev->xmotion.x), SERVER_Y(ev->xmotion.y),
 		     (ev->xmotion.state & 0x1f00) >> 8);
     return;
 
   case ButtonPress:
-    SendPointerEvent(ev->xbutton.x, ev->xbutton.y,
+    SendPointerEvent(SERVER_X(ev->xbutton.x), SERVER_Y(ev->xbutton.y),
 		     (((ev->xbutton.state & 0x1f00) >> 8) |
 		      (1 << (ev->xbutton.button - 1))));
     return;
 
   case ButtonRelease:
-    SendPointerEvent(ev->xbutton.x, ev->xbutton.y,
+    SendPointerEvent(SERVER_X(ev->xbutton.x), SERVER_Y(ev->xbutton.y),
 		     (((ev->xbutton.state & 0x1f00) >> 8) &
 		      ~(1 << (ev->xbutton.button - 1))));
     return;
@@ -361,7 +409,10 @@ void
 CopyDataToScreen(char *buf, int x, int y, int width, int height)
 {
   if (appData.rawDelay != 0) {
-    XFillRectangle(dpy, desktopWin, gc, x, y, width, height);
+    XFillRectangle(dpy, desktopWin, gc,
+		   SCALE_X(x), SCALE_Y(y),
+		   SCALE_X(x + width) - SCALE_X(x),
+		   SCALE_Y(y + height) - SCALE_Y(y));
 
     XSync(dpy,False);
 
@@ -385,13 +436,7 @@ CopyDataToScreen(char *buf, int x, int y, int width, int height)
     CopyBGR233ToScreen((CARD8 *)buf, x, y, width, height);
   }
 
-#ifdef MITSHM
-  if (appData.useShm) {
-    XShmPutImage(dpy, desktopWin, gc, image, x, y, x, y, width, height, False);
-    return;
-  }
-#endif
-  XPutImage(dpy, desktopWin, gc, image, x, y, x, y, width, height);
+  ScaleAndPutImage(x, y, width, height);
 }
 
 
@@ -460,4 +505,170 @@ CopyBGR233ToScreen(CARD8 *buf, int x, int y, int width, int height)
     }
     break;
   }
+}
+
+
+/*
+ * ScaleRect - nearest-neighbor scale a rectangle from image to scaledImage.
+ * sx,sy,sw,sh are in server (full-res) coordinates.
+ */
+
+static void
+ScaleRect(int sx, int sy, int sw, int sh)
+{
+  int scale = appData.scalePercent;
+  int bytesPerPixel = image->bits_per_pixel / 8;
+  int dx, dy, dw, dh;
+  int i, j, src_x, src_y;
+  char *src_row, *dst_row;
+
+  dx = sx * scale / 100;
+  dy = sy * scale / 100;
+  dw = (sx + sw) * scale / 100 - dx;
+  dh = (sy + sh) * scale / 100 - dy;
+
+  if (dw <= 0 || dh <= 0) return;
+
+  for (j = 0; j < dh; j++) {
+    src_y = j * 100 / scale + sy;
+    if (src_y >= si.framebufferHeight)
+      src_y = si.framebufferHeight - 1;
+    dst_row = scaledImage->data + (dy + j) * scaledImage->bytes_per_line;
+    src_row = image->data + src_y * image->bytes_per_line;
+
+    for (i = 0; i < dw; i++) {
+      src_x = i * 100 / scale + sx;
+      if (src_x >= si.framebufferWidth)
+	src_x = si.framebufferWidth - 1;
+
+      memcpy(dst_row + (dx + i) * bytesPerPixel,
+	     src_row + src_x * bytesPerPixel,
+	     bytesPerPixel);
+    }
+  }
+}
+
+
+/*
+ * ScaleAndPutImage - scale a server-coordinate rect and put it on screen.
+ * Handles both scaled and non-scaled modes.
+ */
+
+static void
+ScaleAndPutImage(int x, int y, int w, int h)
+{
+  if (appData.scalePercent == 100 || !scaledImage) {
+    /* No scaling - put directly from image */
+#ifdef MITSHM
+    if (appData.useShm) {
+      XShmPutImage(dpy, desktopWin, gc, image, x, y, x, y, w, h, False);
+      return;
+    }
+#endif
+    XPutImage(dpy, desktopWin, gc, image, x, y, x, y, w, h);
+    return;
+  }
+
+  /* Scale the affected region from image to scaledImage */
+  ScaleRect(x, y, w, h);
+
+  {
+    int scale = appData.scalePercent;
+    int dx = x * scale / 100;
+    int dy = y * scale / 100;
+    int dw = (x + w) * scale / 100 - dx;
+    int dh = (y + h) * scale / 100 - dy;
+
+    if (dw <= 0 || dh <= 0) return;
+
+    XPutImage(dpy, desktopWin, gc, scaledImage, dx, dy, dx, dy, dw, dh);
+  }
+}
+
+
+/*
+ * FillImageRect - fill a rectangle in the full-res image buffer with a pixel.
+ */
+
+static void
+FillImageRect(unsigned long pixel, int x, int y, int w, int h)
+{
+  int bytesPerPixel = image->bits_per_pixel / 8;
+  int row, col;
+  char *ptr;
+
+  for (row = y; row < y + h; row++) {
+    ptr = image->data + row * image->bytes_per_line + x * bytesPerPixel;
+    for (col = 0; col < w; col++) {
+      switch (bytesPerPixel) {
+      case 1: *(CARD8 *)ptr = (CARD8)pixel; break;
+      case 2: *(CARD16 *)ptr = (CARD16)pixel; break;
+      case 4: *(CARD32 *)ptr = (CARD32)pixel; break;
+      }
+      ptr += bytesPerPixel;
+    }
+  }
+}
+
+
+/*
+ * FillRectOnScreen - fill a rectangle, updating both image and display.
+ * When not scaling, uses XFillRectangle directly for performance.
+ * Used by encoding handlers (RRE, CoRRE, Hextile, Tight).
+ */
+
+void
+FillRectOnScreen(unsigned long pixel, int x, int y, int w, int h)
+{
+  if (appData.scalePercent != 100) {
+    FillImageRect(pixel, x, y, w, h);
+    ScaleAndPutImage(x, y, w, h);
+  } else {
+    XGCValues gcv;
+    gcv.foreground = pixel;
+    XChangeGC(dpy, gc, GCForeground, &gcv);
+    XFillRectangle(dpy, desktopWin, gc, x, y, w, h);
+  }
+}
+
+
+/*
+ * CopyRectOnScreen - handle CopyRect encoding with scaling support.
+ * Copies within image buffer, then scales and displays the destination.
+ * When not scaling, uses XCopyArea directly for performance.
+ */
+
+void
+CopyRectOnScreen(int srcX, int srcY, int dstX, int dstY, int w, int h)
+{
+  if (appData.scalePercent == 100) {
+    XCopyArea(dpy, desktopWin, desktopWin, gc, srcX, srcY, w, h, dstX, dstY);
+    return;
+  }
+
+  /* Copy within the full-res image buffer */
+  {
+    int bytesPerPixel = myFormat.bitsPerPixel / 8;
+    int bytesPerLine = image->bytes_per_line;
+    int row;
+    int rowBytes = w * bytesPerPixel;
+
+    /* Handle overlapping copies correctly */
+    if (dstY < srcY || (dstY == srcY && dstX < srcX)) {
+      for (row = 0; row < h; row++) {
+	memmove(image->data + (dstY + row) * bytesPerLine + dstX * bytesPerPixel,
+		image->data + (srcY + row) * bytesPerLine + srcX * bytesPerPixel,
+		rowBytes);
+      }
+    } else {
+      for (row = h - 1; row >= 0; row--) {
+	memmove(image->data + (dstY + row) * bytesPerLine + dstX * bytesPerPixel,
+		image->data + (srcY + row) * bytesPerLine + srcX * bytesPerPixel,
+		rowBytes);
+      }
+    }
+  }
+
+  /* Scale and display the destination region */
+  ScaleAndPutImage(dstX, dstY, w, h);
 }
