@@ -56,7 +56,7 @@ CreatePopup()
 {
   Widget buttonForm, button, prevButton = NULL;
   int i;
-  char buttonName[12];
+  char buttonName[32];
   String buttonType;
 
   popup = XtVaCreatePopupShell("popup", transientShellWidgetClass, toplevel,

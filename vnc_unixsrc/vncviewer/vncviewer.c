@@ -22,6 +22,8 @@
  */
 
 #include "vncviewer.h"
+#include <stdarg.h>
+#include <time.h>
 
 char *programName;
 XtAppContext appContext;
@@ -29,11 +31,51 @@ Display* dpy;
 
 Widget toplevel;
 
+FILE *dbglog = NULL;
+
+jmp_buf xtErrorJmpBuf;
+volatile int xtErrorJmpBufSet = 0;
+
+#define DBG_LOG_PATH "/tmp/vncviewer_debug.log"
+
+void
+dbg_init(void)
+{
+  dbglog = fopen(DBG_LOG_PATH, "w");
+  if (!dbglog) {
+    fprintf(stderr, "WARNING: could not open %s for writing\n", DBG_LOG_PATH);
+    dbglog = stderr;
+  }
+  setbuf(dbglog, NULL); /* unbuffered so nothing is lost on crash */
+  dbg_printf("=== vncviewer debug log started ===");
+}
+
+void
+dbg_printf(const char *fmt, ...)
+{
+  va_list ap;
+  struct timespec ts;
+  struct tm tm;
+
+  if (!dbglog) return;
+
+  clock_gettime(CLOCK_REALTIME, &ts);
+  localtime_r(&ts.tv_sec, &tm);
+  fprintf(dbglog, "[%02d:%02d:%02d.%03ld] ",
+          tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec / 1000000);
+  va_start(ap, fmt);
+  vfprintf(dbglog, fmt, ap);
+  va_end(ap);
+  fprintf(dbglog, "\n");
+}
+
 int
 main(int argc, char **argv)
 {
   int i;
+  Bool firstConnectionDone = False;
   programName = argv[0];
+  dbg_init();
 
   /* The -listen option is used to make us a daemon process which listens for
      incoming connections from servers, rather than actively connecting to a
@@ -75,58 +117,68 @@ main(int argc, char **argv)
 
   GetArgsAndResources(argc, argv);
 
-  /* Unless we accepted an incoming connection, make a TCP connection to the
-     given VNC server */
+  for (;;) {
+    /* Connect (or reconnect) to the VNC server */
 
-  if (!listenSpecified) {
-    if (!ConnectToRFBServer(vncServerHost, vncServerPort)) exit(1);
-  }
+    if (!listenSpecified) {
+      if (!ConnectToRFBServer(vncServerHost, vncServerPort)) {
+        dbg_printf("Connection failed, retrying in 3 seconds...");
+        fprintf(stderr, "Connection failed, retrying in 3 seconds...\n");
+        sleep(3);
+        continue;
+      }
+    }
 
-  /* Initialise the VNC connection, including reading the password */
+    /* Initialise the VNC connection, including reading the password */
 
-  if (!InitialiseRFBConnection()) exit(1);
+    if (!InitialiseRFBConnection()) {
+      dbg_printf("RFB init failed, retrying in 3 seconds...");
+      fprintf(stderr, "RFB init failed, retrying in 3 seconds...\n");
+      close(rfbsock);
+      sleep(3);
+      continue;
+    }
 
-  /* Create the "popup" widget - this won't actually appear on the screen until
-     some user-defined event causes the "ShowPopup" action to be invoked */
+    /* Only create widgets on first connection */
+    if (!firstConnectionDone) {
+      CreatePopup();
+      SetVisualAndCmap();
+      ToplevelInitBeforeRealization();
+      DesktopInitBeforeRealization();
+      XtRealizeWidget(toplevel);
+      InitialiseSelection();
+      ToplevelInitAfterRealization();
+      DesktopInitAfterRealization();
+      firstConnectionDone = True;
+    }
 
-  CreatePopup();
+    /* Tell the VNC server which pixel format and encodings we want to use */
 
-  /* Find the best pixel format and X visual/colormap to use */
+    SetFormatAndEncodings();
 
-  SetVisualAndCmap();
+    /* Main loop - process VNC messages. X events are processed whenever
+       the VNC connection is idle. */
 
-  /* Create the "desktop" widget, and perform initialisation which needs doing
-     before the widgets are realized */
+    dbg_printf("Entering main loop");
 
-  ToplevelInitBeforeRealization();
+    while (1) {
+      if (!HandleRFBServerMessage()) {
+        dbg_printf("HandleRFBServerMessage returned False - connection lost");
+        break;
+      }
+    }
 
-  DesktopInitBeforeRealization();
+    close(rfbsock);
 
-  /* "Realize" all the widgets, i.e. actually create and map their X windows */
-
-  XtRealizeWidget(toplevel);
-
-  /* Perform initialisation that needs doing after realization, now that the X
-     windows exist */
-
-  InitialiseSelection();
-
-  ToplevelInitAfterRealization();
-
-  DesktopInitAfterRealization();
-
-  /* Tell the VNC server which pixel format and encodings we want to use */
-
-  SetFormatAndEncodings();
-
-  /* Now enter the main loop, processing VNC messages.  X events will
-     automatically be processed whenever the VNC connection is idle. */
-
-  while (1) {
-    if (!HandleRFBServerMessage())
+    if (listenSpecified)
       break;
+
+    dbg_printf("Reconnecting in 3 seconds...");
+    fprintf(stderr, "Connection lost, reconnecting in 3 seconds...\n");
+    sleep(3);
   }
 
+  dbg_printf("Exiting, cleaning up");
   Cleanup();
 
   return 0;

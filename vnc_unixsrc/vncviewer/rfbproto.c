@@ -925,6 +925,9 @@ HandleRFBServerMessage()
   if (!ReadFromRFBServer((char *)&msg, 1))
     return False;
 
+  if (msg.type != rfbFramebufferUpdate)
+    dbg_printf("RFB msg type=%d", msg.type);
+
   switch (msg.type) {
 
   case rfbSetColourMapEntries:
@@ -983,8 +986,11 @@ HandleRFBServerMessage()
 
       if (rect.encoding == rfbEncodingXCursor ||
 	  rect.encoding == rfbEncodingRichCursor) {
+	dbg_printf("CursorShape enc=%d hot=(%d,%d) size=%dx%d",
+		(int)rect.encoding, rect.r.x, rect.r.y, rect.r.w, rect.r.h);
 	if (!HandleCursorShape(rect.r.x, rect.r.y, rect.r.w, rect.r.h,
 			      rect.encoding)) {
+	  dbg_printf("HandleCursorShape FAILED");
 	  return False;
 	}
 	continue;
@@ -992,6 +998,7 @@ HandleRFBServerMessage()
 
       if (rect.encoding == rfbEncodingPointerPos) {
 	if (!HandleCursorPos(rect.r.x, rect.r.y)) {
+	  dbg_printf("HandleCursorPos FAILED at (%d,%d)", rect.r.x, rect.r.y);
 	  return False;
 	}
 	continue;
@@ -1000,13 +1007,14 @@ HandleRFBServerMessage()
       if ((rect.r.x + rect.r.w > si.framebufferWidth) ||
 	  (rect.r.y + rect.r.h > si.framebufferHeight))
 	{
-	  fprintf(stderr,"Rect too large: %dx%d at (%d, %d)\n",
-		  rect.r.w, rect.r.h, rect.r.x, rect.r.y);
+	  dbg_printf("Rect too large: %dx%d at (%d,%d) fb=%dx%d",
+		  rect.r.w, rect.r.h, rect.r.x, rect.r.y,
+		  si.framebufferWidth, si.framebufferHeight);
 	  return False;
 	}
 
       if (rect.r.h * rect.r.w == 0) {
-	fprintf(stderr,"Zero size rect - ignoring\n");
+	dbg_printf("Zero size rect - ignoring");
 	continue;
       }
 
@@ -1167,8 +1175,7 @@ HandleRFBServerMessage()
       }
 
       default:
-	fprintf(stderr,"Unknown rect encoding %d\n",
-		(int)rect.encoding);
+	dbg_printf("Unknown rect encoding %d", (int)rect.encoding);
 	return False;
       }
 
@@ -1217,6 +1224,8 @@ HandleRFBServerMessage()
     if (serverCutText)
       free(serverCutText);
 
+    dbg_printf("ServerCutText length=%u", (unsigned)msg.sct.length);
+
     serverCutText = malloc(msg.sct.length+1);
 
     if (!ReadFromRFBServer(serverCutText, msg.sct.length))
@@ -1230,7 +1239,7 @@ HandleRFBServerMessage()
   }
 
   default:
-    fprintf(stderr,"Unknown message type %d from VNC server\n",msg.type);
+    dbg_printf("Unknown message type %d from VNC server", msg.type);
     return False;
   }
 

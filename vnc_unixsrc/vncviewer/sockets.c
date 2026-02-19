@@ -70,8 +70,21 @@ ProcessXtEvents()
   XtAppAddInput(appContext, rfbsock, (XtPointer)XtInputReadMask,
 		rfbsockReadyCallback, NULL);
   while (!rfbsockReady) {
+    xtErrorJmpBufSet = 1;
+    if (setjmp(xtErrorJmpBuf) != 0) {
+      /* Recovered from Xt error (e.g. "Event with wrong window").
+         Re-register the input callback and continue. */
+      dbg_printf("Recovered from Xt error via longjmp, continuing");
+      if (!rfbsockReady) {
+        XtAppAddInput(appContext, rfbsock, (XtPointer)XtInputReadMask,
+                      rfbsockReadyCallback, NULL);
+      }
+      continue;
+    }
     XtAppProcessEvent(appContext, XtIMAll);
+    xtErrorJmpBufSet = 0;
   }
+  xtErrorJmpBufSet = 0;
 }
 
 Bool
@@ -102,11 +115,13 @@ ReadFromRFBServer(char *out, unsigned int n)
 	    ProcessXtEvents();
 	    i = 0;
 	  } else {
-	    fprintf(stderr,programName);
-	    perror(": read");
+	    dbg_printf("read error (buffered): %s (errno=%d)", strerror(errno), errno);
+	    fprintf(stderr, "%s: ", programName);
+	    perror("read");
 	    return False;
 	  }
 	} else {
+	  dbg_printf("VNC server closed connection (buffered read, wanted %u)", n);
 	  if (errorMessageOnReadFailure) {
 	    fprintf(stderr,"%s: VNC server closed connection\n",programName);
 	  }
@@ -131,11 +146,13 @@ ReadFromRFBServer(char *out, unsigned int n)
 	    ProcessXtEvents();
 	    i = 0;
 	  } else {
-	    fprintf(stderr,programName);
-	    perror(": read");
+	    dbg_printf("read error (direct): %s (errno=%d)", strerror(errno), errno);
+	    fprintf(stderr, "%s: ", programName);
+	    perror("read");
 	    return False;
 	  }
 	} else {
+	  dbg_printf("VNC server closed connection (direct read, wanted %u)", n);
 	  if (errorMessageOnReadFailure) {
 	    fprintf(stderr,"%s: VNC server closed connection\n",programName);
 	  }
@@ -385,7 +402,7 @@ StringToIPAddr(const char *str, unsigned int *addr)
   hp = gethostbyname(str);
 
   if (hp) {
-    *addr = *(unsigned int *)hp->h_addr;
+    memcpy(addr, hp->h_addr, sizeof(unsigned int));
     return True;
   }
 

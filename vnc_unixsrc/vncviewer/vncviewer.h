@@ -140,6 +140,7 @@ extern void SetVisualAndCmap();
 
 extern Bool HandleCursorShape(int xhot, int yhot, int width, int height,
                               CARD32 enc);
+extern Bool HandleCursorPos(int x, int y);
 extern void SoftCursorLockArea(int x, int y, int w, int h);
 extern void SoftCursorUnlockScreen(void);
 extern void SoftCursorMove(int x, int y);
@@ -270,3 +271,13 @@ extern char *programName;
 extern XtAppContext appContext;
 extern Display* dpy;
 extern Widget toplevel;
+
+/* debug logging */
+extern FILE *dbglog;
+void dbg_init(void);
+void dbg_printf(const char *fmt, ...);
+
+/* Xt error recovery */
+#include <setjmp.h>
+extern jmp_buf xtErrorJmpBuf;
+extern volatile int xtErrorJmpBufSet;

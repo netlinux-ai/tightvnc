@@ -24,11 +24,15 @@
 #include <vncviewer.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <sys/wait.h>
+#include <execinfo.h>
 
 static void CleanupSignalHandler(int sig);
+static void CrashSignalHandler(int sig);
 static int CleanupXErrorHandler(Display *dpy, XErrorEvent *error);
 static int CleanupXIOErrorHandler(Display *dpy);
 static void CleanupXtErrorHandler(String message);
+static void CleanupXtWarningHandler(String message);
 static Bool IconifyNamedWindow(Window w, char *name, Bool undo);
 
 Dimension dpyWidth, dpyHeight;
@@ -125,10 +129,14 @@ ToplevelInitBeforeRealization()
   signal(SIGHUP, CleanupSignalHandler);
   signal(SIGINT, CleanupSignalHandler);
   signal(SIGTERM, CleanupSignalHandler);
+  signal(SIGSEGV, CrashSignalHandler);
+  signal(SIGABRT, CrashSignalHandler);
+  signal(SIGBUS, CrashSignalHandler);
   defaultXErrorHandler = XSetErrorHandler(CleanupXErrorHandler);
   defaultXIOErrorHandler = XSetIOErrorHandler(CleanupXIOErrorHandler);
   defaultXtErrorHandler = XtAppSetErrorHandler(appContext,
 					       CleanupXtErrorHandler);
+  XtAppSetWarningHandler(appContext, CleanupXtWarningHandler);
 }
 
 
@@ -292,7 +300,21 @@ Cleanup()
 static int
 CleanupXErrorHandler(Display *dpy, XErrorEvent *error)
 {
-  fprintf(stderr,"CleanupXErrorHandler called\n");
+  char errtxt[256];
+  XGetErrorText(dpy, error->error_code, errtxt, sizeof(errtxt));
+  dbg_printf("X ERROR: %s (code=%d, request=%d.%d, resource=0x%lx)",
+             errtxt, error->error_code, error->request_code,
+             error->minor_code, (unsigned long)error->resourceid);
+
+  /* BadWindow errors are non-fatal - they happen when windows are
+     destroyed between event generation and processing (common with
+     transient windows like tooltips, menus, etc.) */
+  if (error->error_code == BadWindow) {
+    dbg_printf("X ERROR (non-fatal BadWindow, continuing)");
+    return 0;
+  }
+
+  fprintf(stderr,"CleanupXErrorHandler: %s\n", errtxt);
   Cleanup();
   return (*defaultXErrorHandler)(dpy, error);
 }
@@ -300,6 +322,7 @@ CleanupXErrorHandler(Display *dpy, XErrorEvent *error)
 static int
 CleanupXIOErrorHandler(Display *dpy)
 {
+  dbg_printf("X IO ERROR: connection to display lost");
   fprintf(stderr,"CleanupXIOErrorHandler called\n");
   Cleanup();
   return (*defaultXIOErrorHandler)(dpy);
@@ -308,17 +331,74 @@ CleanupXIOErrorHandler(Display *dpy)
 static void
 CleanupXtErrorHandler(String message)
 {
-  fprintf(stderr,"CleanupXtErrorHandler called\n");
+  dbg_printf("Xt ERROR: %s", message ? message : "(null)");
+
+  /* "Event with wrong window" is non-fatal - happens when the VNC server
+     sends updates for transient windows (tooltips, popups, etc.) that get
+     destroyed before Xt can process the event.
+     We cannot simply return because Xt declares this handler as noreturn
+     and its internal state is corrupt after the error. Use longjmp to
+     safely jump back to ProcessXtEvents(). */
+  if (message && strstr(message, "wrong window") != NULL) {
+    if (xtErrorJmpBufSet) {
+      dbg_printf("Xt ERROR (non-fatal, recovering via longjmp): %s", message);
+      xtErrorJmpBufSet = 0;
+      longjmp(xtErrorJmpBuf, 1);
+    }
+    /* If jmp_buf not set, we can't recover safely - fall through to fatal */
+    dbg_printf("Xt ERROR (jmp_buf not set, cannot recover): %s", message);
+  }
+
+  fprintf(stderr,"CleanupXtErrorHandler: %s\n", message ? message : "(null)");
   Cleanup();
   (*defaultXtErrorHandler)(message);
 }
 
 static void
+CleanupXtWarningHandler(String message)
+{
+  dbg_printf("Xt WARNING: %s", message ? message : "(null)");
+}
+
+static void
 CleanupSignalHandler(int sig)
 {
-  fprintf(stderr,"CleanupSignalHandler called\n");
+  dbg_printf("Signal %d received, cleaning up", sig);
+  fprintf(stderr,"CleanupSignalHandler called (sig=%d)\n", sig);
   Cleanup();
   exit(1);
+}
+
+static void
+CrashSignalHandler(int sig)
+{
+  void *bt[64];
+  int nframes;
+  const char *signame = "UNKNOWN";
+  int logfd;
+
+  if (sig == SIGSEGV) signame = "SIGSEGV";
+  else if (sig == SIGABRT) signame = "SIGABRT";
+  else if (sig == SIGBUS) signame = "SIGBUS";
+
+  dbg_printf("=== CRASH: signal %s (%d) ===", signame, sig);
+
+  nframes = backtrace(bt, 64);
+
+  /* write backtrace to log file */
+  if (dbglog && dbglog != stderr) {
+    logfd = fileno(dbglog);
+    backtrace_symbols_fd(bt, nframes, logfd);
+  }
+  /* also write to stderr */
+  fprintf(stderr, "\n=== CRASH: signal %s (%d) ===\n", signame, sig);
+  backtrace_symbols_fd(bt, nframes, 2);
+  fprintf(stderr, "=== END CRASH (see /tmp/vncviewer_debug.log) ===\n");
+
+  dbg_printf("=== END CRASH ===");
+
+  signal(sig, SIG_DFL);
+  raise(sig);
 }
 
 
