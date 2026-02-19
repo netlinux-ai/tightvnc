@@ -509,7 +509,9 @@ CopyBGR233ToScreen(CARD8 *buf, int x, int y, int width, int height)
 
 
 /*
- * ScaleRect - nearest-neighbor scale a rectangle from image to scaledImage.
+ * ScaleRect - scale a rectangle from image to scaledImage.
+ * Uses bilinear interpolation for true-color 16/32bpp modes,
+ * nearest-neighbor as fallback for 8bpp or indexed color.
  * sx,sy,sw,sh are in server (full-res) coordinates.
  */
 
@@ -519,8 +521,7 @@ ScaleRect(int sx, int sy, int sw, int sh)
   int scale = appData.scalePercent;
   int bytesPerPixel = image->bits_per_pixel / 8;
   int dx, dy, dw, dh;
-  int i, j, src_x, src_y;
-  char *src_row, *dst_row;
+  int i, j;
 
   dx = sx * scale / 100;
   dy = sy * scale / 100;
@@ -529,15 +530,95 @@ ScaleRect(int sx, int sy, int sw, int sh)
 
   if (dw <= 0 || dh <= 0) return;
 
+  /* Bilinear interpolation for true-color 16/32bpp */
+  if (myFormat.trueColour && !appData.useBGR233 && bytesPerPixel >= 2) {
+    unsigned int rMask = myFormat.redMax;
+    unsigned int gMask = myFormat.greenMax;
+    unsigned int bMask = myFormat.blueMax;
+    int rShift = myFormat.redShift;
+    int gShift = myFormat.greenShift;
+    int bShift = myFormat.blueShift;
+    int srcBPL = image->bytes_per_line;
+    int dstBPL = scaledImage->bytes_per_line;
+    int maxSrcX = si.framebufferWidth - 1;
+    int maxSrcY = si.framebufferHeight - 1;
+
+    for (j = 0; j < dh; j++) {
+      /* Fixed-point source Y (8 fractional bits) */
+      int sy_fp = j * 25600 / scale + sy * 256;
+      int y0 = sy_fp >> 8;
+      int fy = sy_fp & 0xFF;
+      int y1 = y0 < maxSrcY ? y0 + 1 : y0;
+      char *dst_row = scaledImage->data + (dy + j) * dstBPL;
+      char *srow0 = image->data + y0 * srcBPL;
+      char *srow1 = image->data + y1 * srcBPL;
+
+      for (i = 0; i < dw; i++) {
+	/* Fixed-point source X (8 fractional bits) */
+	int sx_fp = i * 25600 / scale + sx * 256;
+	int x0 = sx_fp >> 8;
+	int fx = sx_fp & 0xFF;
+	int x1 = x0 < maxSrcX ? x0 + 1 : x0;
+	unsigned long p00, p10, p01, p11;
+	unsigned int w00, w10, w01, w11;
+	unsigned int r, g, b;
+	unsigned long pixel;
+
+	/* Read 4 source pixels */
+	if (bytesPerPixel == 4) {
+	  p00 = *(CARD32 *)(srow0 + x0 * 4);
+	  p10 = *(CARD32 *)(srow0 + x1 * 4);
+	  p01 = *(CARD32 *)(srow1 + x0 * 4);
+	  p11 = *(CARD32 *)(srow1 + x1 * 4);
+	} else {
+	  p00 = *(CARD16 *)(srow0 + x0 * 2);
+	  p10 = *(CARD16 *)(srow0 + x1 * 2);
+	  p01 = *(CARD16 *)(srow1 + x0 * 2);
+	  p11 = *(CARD16 *)(srow1 + x1 * 2);
+	}
+
+	/* Bilinear weights (sum = 65536) */
+	w00 = (256 - fx) * (256 - fy);
+	w10 = fx * (256 - fy);
+	w01 = (256 - fx) * fy;
+	w11 = fx * fy;
+
+	/* Blend each channel separately */
+	r = (w00 * ((p00 >> rShift) & rMask) +
+	     w10 * ((p10 >> rShift) & rMask) +
+	     w01 * ((p01 >> rShift) & rMask) +
+	     w11 * ((p11 >> rShift) & rMask)) >> 16;
+	g = (w00 * ((p00 >> gShift) & gMask) +
+	     w10 * ((p10 >> gShift) & gMask) +
+	     w01 * ((p01 >> gShift) & gMask) +
+	     w11 * ((p11 >> gShift) & gMask)) >> 16;
+	b = (w00 * ((p00 >> bShift) & bMask) +
+	     w10 * ((p10 >> bShift) & bMask) +
+	     w01 * ((p01 >> bShift) & bMask) +
+	     w11 * ((p11 >> bShift) & bMask)) >> 16;
+
+	pixel = (r << rShift) | (g << gShift) | (b << bShift);
+
+	if (bytesPerPixel == 4)
+	  *(CARD32 *)(dst_row + (dx + i) * 4) = (CARD32)pixel;
+	else
+	  *(CARD16 *)(dst_row + (dx + i) * 2) = (CARD16)pixel;
+      }
+    }
+    return;
+  }
+
+  /* Fallback: nearest-neighbor for 8bpp or indexed color */
   for (j = 0; j < dh; j++) {
-    src_y = j * 100 / scale + sy;
+    int src_y = j * 100 / scale + sy;
+    char *dst_row, *src_row;
     if (src_y >= si.framebufferHeight)
       src_y = si.framebufferHeight - 1;
     dst_row = scaledImage->data + (dy + j) * scaledImage->bytes_per_line;
     src_row = image->data + src_y * image->bytes_per_line;
 
     for (i = 0; i < dw; i++) {
-      src_x = i * 100 / scale + sx;
+      int src_x = i * 100 / scale + sx;
       if (src_x >= si.framebufferWidth)
 	src_x = si.framebufferWidth - 1;
 
