@@ -66,7 +66,7 @@ char *fallback_resources[] = {
 
   "*popup.title: TightVNC popup",
   "*popup*background: grey",
-  "*popup*font: -*-helvetica-bold-r-*-*-16-*-*-*-*-*-*-*",
+  "*popup*font: -*-helvetica-bold-r-*-*-14-*-*-*-*-*-*-*",
   "*popup.buttonForm.Command.borderWidth: 0",
   "*popup.buttonForm.Toggle.borderWidth: 0",
 

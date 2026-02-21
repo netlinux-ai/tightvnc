@@ -6,3 +6,23 @@ vnc_unixsrc/vncviewer/vncviewer
 vnc_unixsrc/vncviewer/vncviewer._man
 vnc_unixsrc/vncconnect/vncconnect
 vnc_unixsrc/vncpasswd/vncpasswd
+
+# Xvnc build artifacts
+vnc_unixsrc/Xvnc/config/cf/host.def
+vnc_unixsrc/Xvnc/config/cf/platform.def
+vnc_unixsrc/Xvnc/config/imake/ccimake
+vnc_unixsrc/Xvnc/config/imake/imake
+vnc_unixsrc/Xvnc/config/makedepend/
+vnc_unixsrc/Xvnc/config/util/gccmakedep
+vnc_unixsrc/Xvnc/config/util/lndir
+vnc_unixsrc/Xvnc/config/util/makestrs
+vnc_unixsrc/Xvnc/config/util/mergelib
+vnc_unixsrc/Xvnc/config/util/xmkmf
+vnc_unixsrc/Xvnc/exports/
+vnc_unixsrc/Xvnc/lib/font/*/DONE
+vnc_unixsrc/Xvnc/lib/font/fc/transport.c
+vnc_unixsrc/Xvnc/programs/Xserver/Xvnc
+vnc_unixsrc/Xvnc/programs/Xserver/cfb*/*.c
+vnc_unixsrc/Xvnc/programs/Xserver/cfb*/*.h
+vnc_unixsrc/Xvnc/programs/Xserver/mfb/mfb*.c
+vnc_unixsrc/Xvnc/programs/Xserver/os/transport.c

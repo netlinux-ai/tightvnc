@@ -1,6 +1,14 @@
 XCOMM platform:  $TOG: linux.cf /main/36 1997/06/16 22:21:03 kaleb $
 XCOMM platform:  $XFree86: xc/config/cf/linux.cf,v 3.57.2.12 1998/03/01 01:57:10 dawes Exp $
 
+/* Use rgb.txt directly instead of dbm (modern Linux has no rgb.db) */
+#ifndef UseRgbTxt
+#define UseRgbTxt		YES
+#endif
+#ifndef DefaultRGBDatabase
+#define DefaultRGBDatabase	/usr/share/X11/rgb
+#endif
+
 #ifndef LinuxElfDefault
 #define LinuxElfDefault		YES
 #endif
