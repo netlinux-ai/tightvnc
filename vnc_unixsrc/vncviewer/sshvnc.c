@@ -88,15 +88,20 @@ setupSshVnc(int *pargc, char **argv, int argIndex)
 
   /* SSH to remote and start x11vnc with -bg.
      -bg makes x11vnc print PORT=XXXX then background itself (fork).
-     We append pgrep to get the real forked server PID in one SSH session. */
+     We append pgrep to get the real forked server PID in one SSH session.
+     -localhost ensures x11vnc only listens on loopback (tunnelled via SSH).
+     When no display is specified, auto-discover from /tmp/.X11-unix/. */
   if (sshvncDisplay[0]) {
     snprintf(cmd, sizeof(cmd),
-             "ssh %s 'x11vnc -nopw -bg -forever -auth guess -display %s 2>&1;"
+             "ssh %s '"
+             "x11vnc -nopw -bg -localhost -display %s 2>&1;"
              " pgrep -n x11vnc'",
              sshvncUserHost, sshvncDisplay);
   } else {
     snprintf(cmd, sizeof(cmd),
-             "ssh %s 'x11vnc -nopw -bg -forever -auth guess 2>&1;"
+             "ssh %s '"
+             "D=$(ls /tmp/.X11-unix/ 2>/dev/null | sed s/X// | head -1);"
+             " x11vnc -nopw -bg -localhost -display :${D:-0} 2>&1;"
              " pgrep -n x11vnc'",
              sshvncUserHost);
   }
