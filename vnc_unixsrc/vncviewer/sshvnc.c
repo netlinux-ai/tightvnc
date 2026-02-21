@@ -170,16 +170,83 @@ setupSshVnc(int *pargc, char **argv, int argIndex)
 }
 
 
+/*
+ * Show a small centered window with a shutdown message.
+ * Returns the window (caller should XDestroyWindow when done).
+ * Returns None if the display is unavailable.
+ */
+static Window
+showShutdownNotice(const char *msg)
+{
+  Window win;
+  XSetWindowAttributes attr;
+  XGCValues gcv;
+  GC gc;
+  int screen;
+  int textW, textH, winW, winH, x, y;
+  XFontStruct *font;
+
+  if (!dpy)
+    return None;
+
+  screen = DefaultScreen(dpy);
+  font = XLoadQueryFont(dpy, "-*-helvetica-bold-r-*-*-18-*-*-*-*-*-*-*");
+  if (!font)
+    font = XLoadQueryFont(dpy, "fixed");
+  if (!font)
+    return None;
+
+  textW = XTextWidth(font, msg, strlen(msg));
+  textH = font->ascent + font->descent;
+  winW = textW + 40;
+  winH = textH + 30;
+  x = (DisplayWidth(dpy, screen) - winW) / 2;
+  y = (DisplayHeight(dpy, screen) - winH) / 2;
+
+  attr.override_redirect = True;
+  attr.background_pixel = BlackPixel(dpy, screen);
+  attr.border_pixel = WhitePixel(dpy, screen);
+
+  win = XCreateWindow(dpy, RootWindow(dpy, screen),
+                      x, y, winW, winH, 2,
+                      CopyFromParent, InputOutput, CopyFromParent,
+                      CWOverrideRedirect | CWBackPixel | CWBorderPixel,
+                      &attr);
+
+  XMapRaised(dpy, win);
+
+  gcv.foreground = WhitePixel(dpy, screen);
+  gcv.font = font->fid;
+  gc = XCreateGC(dpy, win, GCForeground | GCFont, &gcv);
+  XDrawString(dpy, win, gc, 20, 15 + font->ascent, msg, strlen(msg));
+  XFreeGC(dpy, gc);
+  XFreeFontInfo(NULL, font, 0);
+  XFlush(dpy);
+
+  return win;
+}
+
+
 void
 cleanupSshVnc(void)
 {
+  Window notice = None;
+  char msg[300];
+
   if (!sshvncSpecified)
     return;
+  sshvncSpecified = False;
+
+  /* Show on-screen notice while cleanup runs */
+  if (!sshvncPersist && sshvncRemotePid > 0) {
+    snprintf(msg, sizeof(msg), "Disconnecting from %s...", sshvncHost);
+    notice = showShutdownNotice(msg);
+  }
 
   /* Kill remote x11vnc unless persist mode */
   if (!sshvncPersist && sshvncRemotePid > 0) {
     char cmd[512];
-    fprintf(stderr, "%s: Killing remote x11vnc (pid %d on %s)\n",
+    fprintf(stderr, "%s: Stopping remote x11vnc (pid %d on %s)...\n",
             programName, (int)sshvncRemotePid, sshvncHost);
     snprintf(cmd, sizeof(cmd), "ssh %s 'kill %d' 2>/dev/null",
              sshvncUserHost, (int)sshvncRemotePid);
@@ -187,5 +254,10 @@ cleanupSshVnc(void)
       fprintf(stderr, "%s: Warning: failed to kill remote x11vnc\n",
               programName);
     sshvncRemotePid = 0;
+  }
+
+  if (notice != None && dpy) {
+    XDestroyWindow(dpy, notice);
+    XFlush(dpy);
   }
 }
