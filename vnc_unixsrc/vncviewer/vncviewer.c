@@ -92,6 +92,11 @@ main(int argc, char **argv)
       listenForIncomingConnections(&argc, argv, i);
       break;
     }
+    if (strcmp(argv[i], "-sshvnc") == 0) {
+      if (!setupSshVnc(&argc, argv, i))
+	exit(1);
+      break;
+    }
     if (strcmp(argv[i], "-tunnel") == 0 || strcmp(argv[i], "-via") == 0) {
       if (!createTunnel(&argc, argv, i))
 	exit(1);
@@ -180,6 +185,7 @@ main(int argc, char **argv)
 
   dbg_printf("Exiting, cleaning up");
   Cleanup();
+  cleanupSshVnc();
 
   return 0;
 }

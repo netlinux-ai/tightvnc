@@ -269,6 +269,13 @@ extern Bool SetNonBlocking(int sock);
 extern int StringToIPAddr(const char *str, unsigned int *addr);
 extern Bool SameMachine(int sock);
 
+/* sshvnc.c */
+
+extern Bool sshvncSpecified;
+
+extern Bool setupSshVnc(int *pargc, char **argv, int argIndex);
+extern void cleanupSshVnc(void);
+
 /* tunnel.c */
 
 extern Bool tunnelSpecified;

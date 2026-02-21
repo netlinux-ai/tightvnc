@@ -292,6 +292,8 @@ Quit(Widget w, XEvent *event, String *params, Cardinal *num_params)
 void
 Cleanup()
 {
+  cleanupSshVnc();
+
   if (xloginIconified) {
     IconifyNamedWindow(DefaultRootWindow(dpy), "xlogin", True);
     XFlush(dpy);

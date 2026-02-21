@@ -41,6 +41,7 @@ SRCS = \
   selection.c \
   shm.c \
   sockets.c \
+  sshvnc.c \
   tunnel.c \
   vncviewer.c
 
