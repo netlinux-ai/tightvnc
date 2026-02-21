@@ -1,5 +1,5 @@
 /*
- *  Copyright (C) 2026 Graham Whaley.  All Rights Reserved.
+ *  Copyright (C) 2026 Graham North.  All Rights Reserved.
  *
  *  This is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -18,9 +18,15 @@
  */
 
 /*
- * sshvnc.c - SSH to remote host, start x11vnc, create tunnel and connect.
+ * sshvnc.c - SSH to remote host, start x11vnc, connect directly.
  *
  * Usage: vncviewer -sshvnc user@host [-sshvnc-display :N] [-sshvnc-persist]
+ *
+ * Flow:
+ *   1. SSH to remote, auto-discover X display, start x11vnc with -bg
+ *   2. Parse PORT= and PID from x11vnc output
+ *   3. Connect viewer directly to host::port (VNC password via -rfbauth)
+ *   4. On exit, SSH back to kill remote x11vnc (unless -sshvnc-persist)
  */
 
 #include <vncviewer.h>
@@ -31,23 +37,23 @@
 Bool sshvncSpecified = False;
 
 static char sshvncUserHost[256];
+static char sshvncHost[256];
 static char sshvncDisplay[64];
 static Bool sshvncPersist = False;
-static pid_t sshvncTunnelPid = 0;
 static pid_t sshvncRemotePid = 0;
 
-/* Fake "localhost::port" argument for argv rewriting */
-static char sshvncLastArgv[32];
+/* Server argument for argv rewriting: "host::port" */
+static char sshvncServerArg[300];
 
 
 Bool
 setupSshVnc(int *pargc, char **argv, int argIndex)
 {
   char *userHost;
-  int localPort, remotePort = 0;
+  char *atSign;
+  int remotePort = 0;
   char cmd[1024];
   char line[1024];
-  char portSpec[64];
   FILE *fp;
   int i;
 
@@ -62,6 +68,14 @@ setupSshVnc(int *pargc, char **argv, int argIndex)
     return False;
   }
   strcpy(sshvncUserHost, userHost);
+
+  /* Extract just the hostname (after @ if present) */
+  atSign = strchr(sshvncUserHost, '@');
+  if (atSign)
+    strncpy(sshvncHost, atSign + 1, sizeof(sshvncHost) - 1);
+  else
+    strncpy(sshvncHost, sshvncUserHost, sizeof(sshvncHost) - 1);
+  sshvncHost[sizeof(sshvncHost) - 1] = '\0';
 
   /* Remove -sshvnc and user@host from argv */
   removeArgs(pargc, argv, argIndex, 2);
@@ -87,27 +101,27 @@ setupSshVnc(int *pargc, char **argv, int argIndex)
   }
 
   /* SSH to remote and start x11vnc with -bg.
-     -bg makes x11vnc print PORT=XXXX then background itself (fork).
-     We append pgrep to get the real forked server PID in one SSH session.
-     -localhost ensures x11vnc only listens on loopback (tunnelled via SSH).
+     -bg makes x11vnc print PORT=XXXX then fork to background.
+     -rfbauth uses the remote VNC password file for authentication.
+     We append pgrep to get the forked server PID in one SSH session.
      When no display is specified, auto-discover from /tmp/.X11-unix/. */
   if (sshvncDisplay[0]) {
     snprintf(cmd, sizeof(cmd),
              "ssh %s '"
-             "x11vnc -nopw -bg -localhost -display %s 2>&1;"
+             "x11vnc -bg -rfbauth ~/.vnc/passwd -display %s 2>&1;"
              " pgrep -n x11vnc'",
              sshvncUserHost, sshvncDisplay);
   } else {
     snprintf(cmd, sizeof(cmd),
              "ssh %s '"
              "D=$(ls /tmp/.X11-unix/ 2>/dev/null | sed s/X// | head -1);"
-             " x11vnc -nopw -bg -localhost -display :${D:-0} 2>&1;"
+             " x11vnc -bg -rfbauth ~/.vnc/passwd -display :${D:-0} 2>&1;"
              " pgrep -n x11vnc'",
              sshvncUserHost);
   }
 
   fprintf(stderr, "%s: Starting x11vnc on %s...\n",
-          programName, sshvncUserHost);
+          programName, sshvncHost);
 
   fp = popen(cmd, "r");
   if (!fp) {
@@ -116,7 +130,7 @@ setupSshVnc(int *pargc, char **argv, int argIndex)
   }
 
   /* Parse x11vnc output for PORT=.
-     The last line will be the real PID from pgrep. */
+     The last numeric-only line is the pgrep PID output. */
   while (fgets(line, sizeof(line), fp)) {
     char *p;
 
@@ -137,57 +151,18 @@ setupSshVnc(int *pargc, char **argv, int argIndex)
     return False;
   }
 
-  fprintf(stderr, "%s: x11vnc running on port %d (pid %d)\n",
-          programName, remotePort, (int)sshvncRemotePid);
+  fprintf(stderr, "%s: x11vnc on %s port %d (pid %d) — connecting directly\n",
+          programName, sshvncHost, remotePort, (int)sshvncRemotePid);
 
-  /* Find a free local port for the tunnel */
-  localPort = FindFreeTcpPort();
-  if (localPort == 0) {
-    fprintf(stderr, "%s: Could not find a free local port\n", programName);
-    return False;
-  }
-
-  /* Create SSH tunnel via fork/exec so we can track the PID */
-  snprintf(portSpec, sizeof(portSpec),
-           "%d:localhost:%d", localPort, remotePort);
-
-  sshvncTunnelPid = fork();
-  if (sshvncTunnelPid == -1) {
-    perror("fork");
-    return False;
-  }
-
-  if (sshvncTunnelPid == 0) {
-    /* Child - redirect stdio to /dev/null and exec ssh tunnel */
-    int devnull = open("/dev/null", O_RDWR);
-    if (devnull >= 0) {
-      dup2(devnull, 0);
-      dup2(devnull, 1);
-      dup2(devnull, 2);
-      if (devnull > 2)
-        close(devnull);
-    }
-    execlp("ssh", "ssh", "-N", "-L", portSpec, sshvncUserHost, (char *)NULL);
-    _exit(1);
-  }
-
-  /* Parent - give tunnel time to establish */
-  fprintf(stderr, "%s: SSH tunnel localhost:%d -> %s:localhost:%d (pid %d)\n",
-          programName, localPort, sshvncUserHost, remotePort,
-          (int)sshvncTunnelPid);
-  sleep(1);
-
-  /* Append localhost::localPort as the server argument.
-     After removing -sshvnc args there is no server spec in argv,
-     so we add one (safe because we removed at least 2 args earlier). */
-  snprintf(sshvncLastArgv, sizeof(sshvncLastArgv),
-           "localhost::%d", localPort);
-  argv[*pargc] = sshvncLastArgv;
+  /* Connect directly to remote host::port (no tunnel).
+     Append "host::port" as the server argument. */
+  snprintf(sshvncServerArg, sizeof(sshvncServerArg),
+           "%s::%d", sshvncHost, remotePort);
+  argv[*pargc] = sshvncServerArg;
   (*pargc)++;
   argv[*pargc] = NULL;
 
   sshvncSpecified = True;
-  tunnelSpecified = True;
 
   atexit(cleanupSshVnc);
 
@@ -201,20 +176,11 @@ cleanupSshVnc(void)
   if (!sshvncSpecified)
     return;
 
-  /* Kill local SSH tunnel */
-  if (sshvncTunnelPid > 0) {
-    fprintf(stderr, "%s: Killing SSH tunnel (pid %d)\n",
-            programName, (int)sshvncTunnelPid);
-    kill(sshvncTunnelPid, SIGTERM);
-    waitpid(sshvncTunnelPid, NULL, WNOHANG);
-    sshvncTunnelPid = 0;
-  }
-
   /* Kill remote x11vnc unless persist mode */
   if (!sshvncPersist && sshvncRemotePid > 0) {
     char cmd[512];
     fprintf(stderr, "%s: Killing remote x11vnc (pid %d on %s)\n",
-            programName, (int)sshvncRemotePid, sshvncUserHost);
+            programName, (int)sshvncRemotePid, sshvncHost);
     snprintf(cmd, sizeof(cmd), "ssh %s 'kill %d' 2>/dev/null",
              sshvncUserHost, (int)sshvncRemotePid);
     if (system(cmd) != 0)
