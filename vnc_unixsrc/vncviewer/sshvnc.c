@@ -25,7 +25,7 @@
  * Flow:
  *   1. SSH to remote, auto-discover X display, start x11vnc with -bg
  *   2. Parse PORT= and PID from x11vnc output
- *   3. Connect viewer directly to host::port (VNC password via -rfbauth)
+ *   3. Connect viewer directly to host::port (no VNC password needed)
  *   4. On exit, SSH back to kill remote x11vnc (unless -sshvnc-persist)
  */
 
@@ -100,22 +100,22 @@ setupSshVnc(int *pargc, char **argv, int argIndex)
     }
   }
 
-  /* SSH to remote and start x11vnc with -bg.
+  /* SSH to remote and start x11vnc with -bg -nopw.
      -bg makes x11vnc print PORT=XXXX then fork to background.
-     -rfbauth uses the remote VNC password file for authentication.
+     -nopw disables VNC password (trust is via SSH authentication).
      We append pgrep to get the forked server PID in one SSH session.
      When no display is specified, auto-discover from /tmp/.X11-unix/. */
   if (sshvncDisplay[0]) {
     snprintf(cmd, sizeof(cmd),
              "ssh %s '"
-             "x11vnc -bg -rfbauth ~/.vnc/passwd -display %s 2>&1;"
+             "x11vnc -bg -nopw -display %s 2>&1;"
              " pgrep -n x11vnc'",
              sshvncUserHost, sshvncDisplay);
   } else {
     snprintf(cmd, sizeof(cmd),
              "ssh %s '"
              "D=$(ls /tmp/.X11-unix/ 2>/dev/null | sed s/X// | head -1);"
-             " x11vnc -bg -rfbauth ~/.vnc/passwd -display :${D:-0} 2>&1;"
+             " x11vnc -bg -nopw -display :${D:-0} 2>&1;"
              " pgrep -n x11vnc'",
              sshvncUserHost);
   }
