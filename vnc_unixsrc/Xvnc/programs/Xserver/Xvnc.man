@@ -10,7 +10,7 @@
 .\" License as specified in the file LICENCE.TXT that comes with the
 .\" TightVNC distribution.
 .\"
-.TH Xvnc 1 "August 2006" "" "TightVNC"
+.TH Xvnc 1 "February 2026" "" "TightVNC"
 .SH NAME
 Xvnc \- an X server providing VNC connectivity
 .SH SYNOPSIS
@@ -32,6 +32,10 @@ an X server with a virtual display. The display can be seen by a VNC
 viewer application, which may be running on a different machine: see
 \fBvncviewer\fR(1). Xvnc is built inside the source code tree of
 XFree86, and shares many options with it.
+
+Color name lookups use the \fBrgb.txt\fR file (typically
+\fI/etc/X11/rgb.txt\fR or \fI/usr/share/X11/rgb.txt\fR) rather than
+the legacy DBM color database.
 
 Normally, you don't need to start Xvnc manually; use the
 \fBvncserver\fR(1) wrapper script instead. This script sets reasonable
@@ -144,7 +148,7 @@ to the Xvnc server. For details on SSH tunneling, see
 <URL:http://www.uk.research.att.com/vnc/sshvnc.html> .
 .SH SEE ALSO
 \fBvncserver\fR(1), \fBvncviewer\fR(1), \fBvncpasswd\fR(1),
-\fBvncconnect\fR(1), \fBsshd\fR(1)
+\fBvncconnect\fR(1), \fBx11vnc\fR(1), \fBsshd\fR(1)
 .SH AUTHORS
 Original VNC was developed in AT&T Laboratories Cambridge. TightVNC
 additions were implemented by Constantin Kaplinsky. Many other people

@@ -11,7 +11,7 @@ Obsoletes: vnc
 BuildRoot: %{_tmppath}/%{name}-%{version}-root
 BuildPrereq: /usr/bin/perl tcp_wrappers
 BuildRequires: zlib-devel libjpeg-devel
-ExclusiveArch: i386 alpha sparc ppc s390 s390x
+ExclusiveArch: i386 x86_64 alpha sparc ppc s390 s390x aarch64
 
 %description
 Virtual Network Computing (VNC) is a remote display system which
@@ -20,6 +20,8 @@ machine where it is running, but from anywhere on the Internet and
 from a wide variety of machine architectures. TightVNC is an enhanced
 VNC distribution. This package contains a client which will allow you
 to connect to other desktops running a VNC or a TightVNC server.
+Features include display scaling, SSH-based remote access via -sshvnc,
+automatic reconnection, and bilinear interpolation for smooth scaling.
 
 %package server
 Summary: TightVNC server
@@ -47,7 +49,7 @@ xmkmf -a
 make CDEBUGFLAGS="$RPM_OPT_FLAGS" World
 cd Xvnc
 ./configure
-make EXTRA_LIBRARIES="-lwrap -lnss_nis" CDEBUGFLAGS="$RPM_OPT_FLAGS" \
+make AR="ar cq" EXTRA_LIBRARIES="-lwrap -lnss_nis" CDEBUGFLAGS="$RPM_OPT_FLAGS -fcommon" \
      EXTRA_DEFINES="-DUSE_LIBWRAP=1"
 
 %install
@@ -134,6 +136,12 @@ fi
 %{_mandir}/man1/vncpasswd.1*
 
 %changelog
+* Fri Feb 21 2026 Graham Cobb <graham@netlinux.co.uk>
+- Netlinux fork: -scale, -sshvnc, auto-reconnect, bilinear scaling.
+- Xvnc: rgb.txt color lookup, popup font fix.
+- Build fixes: -fcommon for GCC 10+, ar flags for modern binutils.
+- Added x86_64 and aarch64 to ExclusiveArch.
+
 * Thu Feb  5 2009 Constantin Kaplinsky <const@tightvnc.com>
 - Version 1.3.10.
 

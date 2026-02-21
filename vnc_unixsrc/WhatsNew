@@ -4,6 +4,38 @@
 |   in TightVNC source and binary archives.                          |
 +--------------------------------------------------------------------+
 
+* TightVNC 1.3.10 (netlinux fork)
+
+  - Unix Viewer: New -scale option for display scaling with bilinear
+    interpolation.  Accepts a percentage (e.g. -scale 50 for half
+    size).
+
+  - Unix Viewer: New -sshvnc option: SSH to a remote host, start
+    x11vnc there, and connect directly.  Auto-discovers the remote
+    display and VNC port.  Related options: -sshvnc-display to specify
+    the remote X display, -sshvnc-persist to keep the remote x11vnc
+    running after the viewer exits.
+
+  - Unix Viewer: Automatic reconnection when the server connection
+    drops.  When used with -sshvnc, the remote x11vnc is restarted
+    if it has exited.  An on-screen notice is shown during
+    shutdown/reconnect.
+
+  - Unix Viewer: Fixed 64-bit crashes caused by pointer truncation.
+    Added debug logging (controlled via QT_LOGGING_RULES or -debug).
+
+  - Xvnc: Color name lookups now use rgb.txt instead of the legacy
+    DBM color database, improving compatibility with modern systems
+    that do not ship rgb.db.
+
+  - Xvnc: Fixed popup menu font size.
+
+  - Build: Fixed Xvnc link failures with GCC 10+ by adding -fcommon.
+    Fixed ar flags for modern binutils compatibility.
+
+  - Packaging: Added CI/CD workflow for automated .deb package builds
+    and releases via GitHub Actions.
+
 * TightVNC 1.3.10
 
   - Windows Server: Impersonating currently logged on user while

@@ -80,6 +80,12 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           name: tightvnc ${{ steps.version.outputs.version }}
           body: |
+            TightVNC 1.3.10 (netlinux fork) — VNC server and viewer for Unix/Linux.
+
+            Includes vncviewer with display scaling (-scale), SSH remote access
+            (-sshvnc), automatic reconnection, bilinear interpolation, and Xvnc
+            with rgb.txt color support.
+
             Automated build from commit ${{ github.sha }}
 
             Install: `sudo dpkg -i tightvnc_*.deb`

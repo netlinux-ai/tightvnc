@@ -10,7 +10,7 @@
 .\" License as specified in the file LICENCE.TXT that comes with the
 .\" TightVNC distribution.
 .\"
-.TH vncviewer 1 "August 2006" "" "TightVNC"
+.TH vncviewer 1 "February 2026" "" "TightVNC"
 .SH NAME
 vncviewer \- an X viewer client for VNC
 .SH SYNOPSIS
@@ -39,6 +39,9 @@ of a different machine.
 
 You can use F8 to display a pop\-up utility menu. Press F8 twice to
 pass single F8 to the remote side.
+
+If the connection to the server is lost, the viewer will automatically
+attempt to reconnect every few seconds.
 .SH OPTIONS
 .TP
 \fB\-help\fR
@@ -168,6 +171,30 @@ non-fullscreen mode.
 \fB\-autopass\fR
 Read a plain-text password from stdin. This option affects only the
 standard VNC authentication.
+.TP
+\fB\-scale\fR \fIpercent\fR
+Scale the remote desktop by the given percentage for display.
+For example, \fB\-scale 50\fR shows the desktop at half size.
+Bilinear interpolation is used for smooth results.
+Default is 100 (no scaling).
+.TP
+\fB\-sshvnc\fR \fIuser@host\fR
+SSH to the remote \fIhost\fR, automatically start \fBx11vnc\fR(1) there,
+and connect directly to it.  The viewer discovers the remote X display
+and VNC port automatically, and connects without an SSH tunnel.
+On disconnect (or viewer exit), the remote x11vnc process is killed
+unless \fB\-sshvnc\-persist\fR is specified.  The viewer will
+auto\-reconnect if the connection drops, restarting the remote x11vnc
+if it has exited.
+.TP
+\fB\-sshvnc\-display\fR \fIdisplay\fR
+Specify the remote X display for \fBx11vnc\fR to attach to (e.g.
+\fI:0\fR).  By default, the display is auto\-discovered.
+Only meaningful with \fB\-sshvnc\fR.
+.TP
+\fB\-sshvnc\-persist\fR
+Do not kill the remote \fBx11vnc\fR process when the viewer exits.
+Only meaningful with \fB\-sshvnc\fR.
 .SH ENCODINGS
 The server supplies information in whatever format is desired by the
 client, in order to make the client as easy as possible to implement. 
@@ -332,6 +359,9 @@ Default 20 pixels every 25 milliseconds.
 The number of buttons in the popup window. See the README file for
 more information on how to customize the buttons.
 .TP
+.B scalePercent
+Equivalent of \fB\-scale\fR option. Default 100 (no scaling).
+.TP
 .B debug
 For debugging. Default false.
 .TP
@@ -365,7 +395,7 @@ local TCP port number;
 remote TCP port number.
 .SH SEE ALSO
 \fBvncserver\fR(1), \fBXvnc\fR(1), \fBvncpasswd\fR(1),
-\fBvncconnect\fR(1), \fBssh\fR(1)
+\fBvncconnect\fR(1), \fBx11vnc\fR(1), \fBssh\fR(1)
 .SH AUTHORS
 Original VNC was developed in AT&T Laboratories Cambridge. TightVNC
 additions were implemented by Constantin Kaplinsky. Many other people
