@@ -1,0 +1,8 @@
+*.o
+*.a
+*.bak
+Makefile
+vnc_unixsrc/vncviewer/vncviewer
+vnc_unixsrc/vncviewer/vncviewer._man
+vnc_unixsrc/vncconnect/vncconnect
+vnc_unixsrc/vncpasswd/vncpasswd
