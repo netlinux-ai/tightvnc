@@ -46,6 +46,76 @@ static pid_t sshvncRemotePid = 0;
 static char sshvncServerArg[300];
 
 
+/*
+ * SSH to remote and start x11vnc.  Sets *port and sshvncRemotePid.
+ * Returns True on success.
+ */
+static Bool
+startRemoteX11vnc(int *port)
+{
+  char cmd[1024];
+  char line[1024];
+  FILE *fp;
+
+  *port = 0;
+  sshvncRemotePid = 0;
+
+  /* -bg makes x11vnc print PORT=XXXX then fork to background.
+     -nopw disables VNC password (trust is via SSH authentication).
+     We append pgrep to get the forked server PID in one SSH session.
+     When no display is specified, auto-discover from /tmp/.X11-unix/. */
+  if (sshvncDisplay[0]) {
+    snprintf(cmd, sizeof(cmd),
+             "ssh %s '"
+             "x11vnc -bg -nopw -display %s 2>&1;"
+             " pgrep -n x11vnc'",
+             sshvncUserHost, sshvncDisplay);
+  } else {
+    snprintf(cmd, sizeof(cmd),
+             "ssh %s '"
+             "D=$(ls /tmp/.X11-unix/ 2>/dev/null | sed s/X// | head -1);"
+             " x11vnc -bg -nopw -display :${D:-0} 2>&1;"
+             " pgrep -n x11vnc'",
+             sshvncUserHost);
+  }
+
+  fprintf(stderr, "%s: Starting x11vnc on %s...\n",
+          programName, sshvncHost);
+
+  fp = popen(cmd, "r");
+  if (!fp) {
+    perror("popen");
+    return False;
+  }
+
+  /* Parse x11vnc output for PORT=.
+     The last numeric-only line is the pgrep PID output. */
+  while (fgets(line, sizeof(line), fp)) {
+    char *p;
+
+    p = strstr(line, "PORT=");
+    if (p)
+      *port = atoi(p + 5);
+
+    if (line[0] >= '0' && line[0] <= '9' &&
+        strspn(line, "0123456789\n") == strlen(line))
+      sshvncRemotePid = atoi(line);
+  }
+
+  pclose(fp);
+
+  if (*port == 0) {
+    fprintf(stderr, "%s: Failed to get VNC port from x11vnc\n", programName);
+    return False;
+  }
+
+  fprintf(stderr, "%s: x11vnc on %s port %d (pid %d) — connecting directly\n",
+          programName, sshvncHost, *port, (int)sshvncRemotePid);
+
+  return True;
+}
+
+
 Bool
 setupSshVnc(int *pargc, char **argv, int argIndex)
 {
@@ -100,59 +170,8 @@ setupSshVnc(int *pargc, char **argv, int argIndex)
     }
   }
 
-  /* SSH to remote and start x11vnc with -bg -nopw.
-     -bg makes x11vnc print PORT=XXXX then fork to background.
-     -nopw disables VNC password (trust is via SSH authentication).
-     We append pgrep to get the forked server PID in one SSH session.
-     When no display is specified, auto-discover from /tmp/.X11-unix/. */
-  if (sshvncDisplay[0]) {
-    snprintf(cmd, sizeof(cmd),
-             "ssh %s '"
-             "x11vnc -bg -nopw -display %s 2>&1;"
-             " pgrep -n x11vnc'",
-             sshvncUserHost, sshvncDisplay);
-  } else {
-    snprintf(cmd, sizeof(cmd),
-             "ssh %s '"
-             "D=$(ls /tmp/.X11-unix/ 2>/dev/null | sed s/X// | head -1);"
-             " x11vnc -bg -nopw -display :${D:-0} 2>&1;"
-             " pgrep -n x11vnc'",
-             sshvncUserHost);
-  }
-
-  fprintf(stderr, "%s: Starting x11vnc on %s...\n",
-          programName, sshvncHost);
-
-  fp = popen(cmd, "r");
-  if (!fp) {
-    perror("popen");
+  if (!startRemoteX11vnc(&remotePort))
     return False;
-  }
-
-  /* Parse x11vnc output for PORT=.
-     The last numeric-only line is the pgrep PID output. */
-  while (fgets(line, sizeof(line), fp)) {
-    char *p;
-
-    p = strstr(line, "PORT=");
-    if (p)
-      remotePort = atoi(p + 5);
-
-    /* Last numeric-only line is the pgrep output */
-    if (line[0] >= '0' && line[0] <= '9' &&
-        strspn(line, "0123456789\n") == strlen(line))
-      sshvncRemotePid = atoi(line);
-  }
-
-  pclose(fp);
-
-  if (remotePort == 0) {
-    fprintf(stderr, "%s: Failed to get VNC port from x11vnc\n", programName);
-    return False;
-  }
-
-  fprintf(stderr, "%s: x11vnc on %s port %d (pid %d) — connecting directly\n",
-          programName, sshvncHost, remotePort, (int)sshvncRemotePid);
 
   /* Connect directly to remote host::port (no tunnel).
      Append "host::port" as the server argument. */
@@ -165,6 +184,57 @@ setupSshVnc(int *pargc, char **argv, int argIndex)
   sshvncSpecified = True;
 
   atexit(cleanupSshVnc);
+
+  return True;
+}
+
+
+/*
+ * Check if remote x11vnc is still alive; if not, kill any stale
+ * process and restart it.  Updates vncServerPort on success.
+ * Called from the reconnect loop in vncviewer.c.
+ */
+Bool
+reconnectSshVnc(void)
+{
+  char cmd[512];
+  int alive;
+  int newPort;
+
+  if (!sshvncSpecified)
+    return True;
+
+  /* Check if the remote x11vnc PID is still running */
+  if (sshvncRemotePid > 0) {
+    snprintf(cmd, sizeof(cmd),
+             "ssh %s 'kill -0 %d' 2>/dev/null",
+             sshvncUserHost, (int)sshvncRemotePid);
+    alive = (system(cmd) == 0);
+  } else {
+    alive = 0;
+  }
+
+  if (alive) {
+    fprintf(stderr, "%s: Remote x11vnc (pid %d) still running, reconnecting.\n",
+            programName, (int)sshvncRemotePid);
+    return True;
+  }
+
+  /* x11vnc is dead — kill any stale process just in case, then restart */
+  fprintf(stderr, "%s: Remote x11vnc is gone, restarting...\n", programName);
+
+  if (sshvncRemotePid > 0) {
+    snprintf(cmd, sizeof(cmd), "ssh %s 'kill %d' 2>/dev/null",
+             sshvncUserHost, (int)sshvncRemotePid);
+    system(cmd);
+    sshvncRemotePid = 0;
+  }
+
+  if (!startRemoteX11vnc(&newPort))
+    return False;
+
+  /* Update the server port for the next ConnectToRFBServer call */
+  vncServerPort = newPort;
 
   return True;
 }

@@ -274,6 +274,7 @@ extern Bool SameMachine(int sock);
 extern Bool sshvncSpecified;
 
 extern Bool setupSshVnc(int *pargc, char **argv, int argIndex);
+extern Bool reconnectSshVnc(void);
 extern void cleanupSshVnc(void);
 
 /* tunnel.c */

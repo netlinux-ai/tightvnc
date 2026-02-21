@@ -130,6 +130,10 @@ main(int argc, char **argv)
         dbg_printf("Connection failed, retrying in 3 seconds...");
         fprintf(stderr, "Connection failed, retrying in 3 seconds...\n");
         sleep(3);
+        /* If using -sshvnc, check remote x11vnc and restart if needed */
+        if (sshvncSpecified && !reconnectSshVnc()) {
+          fprintf(stderr, "Failed to restart remote x11vnc, retrying...\n");
+        }
         continue;
       }
     }
@@ -181,6 +185,12 @@ main(int argc, char **argv)
     dbg_printf("Reconnecting in 3 seconds...");
     fprintf(stderr, "Connection lost, reconnecting in 3 seconds...\n");
     sleep(3);
+
+    /* If using -sshvnc, check remote x11vnc and restart if needed */
+    if (sshvncSpecified && !reconnectSshVnc()) {
+      fprintf(stderr, "Failed to restart remote x11vnc, retrying...\n");
+      continue;
+    }
   }
 
   dbg_printf("Exiting, cleaning up");
